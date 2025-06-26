@@ -5,10 +5,9 @@ import pandas as pd
 import joblib
 import re
 import string
-import base64
-from streamlit_card import card
+from streamlit_product_card import product_card
 
-# --- Fungsi untuk membersihkan teks ---
+# --- Fungsi pembersih teks ---
 def clean_text(text):
     if pd.isna(text):
         return ""
@@ -25,7 +24,7 @@ vectorizer = joblib.load('tfidf_vectorizer.pkl')
 # --- Judul Aplikasi ---
 st.set_page_config(page_title="Rekomendasi Wisata Bali", layout="wide")
 st.title("🎯 Rekomendasi Tempat Wisata di Bali")
-st.markdown("Cari tempat wisata berdasarkan tempat favorit Anda di Bali.")
+st.markdown("Pilih tempat favoritmu, dan kami rekomendasikan yang serupa!")
 
 # --- Input pengguna ---
 pilihan_tempat = st.selectbox("Kamu sedang berada di mana / mau ke mana?", sorted(df['nama'].unique()))
@@ -34,7 +33,6 @@ pilihan_tempat = st.selectbox("Kamu sedang berada di mana / mau ke mana?", sorte
 if st.button("Temukan Tempat Rekomendasi"):
     nama_input = clean_text(pilihan_tempat)
 
-    # Verifikasi apakah input ada dalam data
     if nama_input not in df['nama'].str.lower().values:
         st.error(f"Tempat '{pilihan_tempat}' tidak ditemukan.")
     else:
@@ -49,44 +47,58 @@ if st.button("Temukan Tempat Rekomendasi"):
         rekomendasi = []
         for i, score in sim_scores[1:]:
             if df.loc[i, 'kabupaten_kota'] == kabupaten_input:
-                rekomendasi.append((df.loc[i], score))
-            if len(rekomendasi) >= 12:
+                rekomendasi.append(df.loc[i])
+            if len(rekomendasi) >= 10:
                 break
 
         if not rekomendasi:
             st.warning("Tidak ditemukan tempat wisata yang mirip di kabupaten yang sama.")
         else:
-            st.subheader("🧭 Rekomendasi Tempat Wisata Mirip di Kabupaten yang Sama:")
+            st.subheader("📍 Rekomendasi Tempat Wisata Mirip:")
+            for idx, tempat in enumerate(rekomendasi):
+                clicked = product_card(
+                    product_name=tempat['nama'].title(),
+                    description=[
+                        f"Kategori: {tempat['kategori'].title()}",
+                        f"Preferensi: {tempat['preferensi'].title()}",
+                        f"Lokasi: {tempat['kabupaten_kota'].title()}",
+                    ],
+                    price=f"⭐ {tempat['rating']:.1f}",
+                    product_image=tempat['link_gambar'] if pd.notna(tempat['link_gambar']) else "https://placekitten.com/400/300",
+                    button_text="Lihat di Google Maps" if pd.notna(tempat['link_lokasi']) else None,
+                    picture_position="left",
+                    image_width_percent=40,
+                    image_aspect_ratio="4/3",
+                    image_object_fit="cover",
+                    enable_animation=True,
+                    mobile_breakpoint_behavior="stack top",
+                    font_url="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap",
+                    styles={
+                        "card": {
+                            "border-radius": "12px",
+                            "box-shadow": "0 4px 8px rgba(0,0,0,0.1)",
+                            "background-color": "#ffffff",
+                            "margin-bottom": "16px",
+                        },
+                        "title": {
+                            "font-family": "'Montserrat', sans-serif",
+                            "font-size": "1.3em",
+                            "font-weight": "600",
+                        },
+                        "text": {
+                            "font-family": "'Montserrat', sans-serif",
+                            "font-size": "0.95em",
+                        },
+                        "price": {
+                            "font-family": "'Montserrat', sans-serif",
+                            "font-size": "1em",
+                            "color": "#e67700",
+                            "font-weight": "bold"
+                        },
+                    },
+                    key=f"rekomendasi_{idx}"
+                )
 
-            # Tampilkan dalam bentuk card (3 kolom per baris)
-            for i in range(0, len(rekomendasi), 3):
-                cols = st.columns(3)
-                for j in range(3):
-                    if i + j < len(rekomendasi):
-                        tempat, skor = rekomendasi[i + j]
-                        with cols[j]:
-                            # Cek gambar valid
-                            img = tempat['link_gambar'] if pd.notna(tempat['link_gambar']) else "https://placekitten.com/400/300"
-                            
-                            # Tampilkan card
-                            card(
-                                title=tempat['nama'].title(),
-                                text=[
-                                    f"Kategori: {tempat['kategori'].title()}",
-                                    f"Rating: {tempat['rating']:.1f}",
-                                    f"Lokasi: {tempat['kabupaten_kota'].title()}",
-                                ],
-                                image=img,
-                                url=tempat['link_lokasi'] if pd.notna(tempat['link_lokasi']) else None,
-                                styles={
-                                    "card": {
-                                        "width": "100%",
-                                        "height": "340px",
-                                        "box-shadow": "0 0 10px rgba(0,0,0,0.1)",
-                                        "border-radius": "12px",
-                                        "margin": "10px"
-                                    },
-                                    "title": {"font-size": "18px"},
-                                    "text": {"font-size": "14px"}
-                                }
-                            )
+                if clicked and pd.notna(tempat['link_lokasi']):
+                    st.success(f"Membuka {tempat['nama']} di Google Maps...")
+                    st.markdown(f"[Klik di sini untuk membuka Google Maps]({tempat['link_lokasi']})")
