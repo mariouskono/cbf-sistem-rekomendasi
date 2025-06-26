@@ -46,7 +46,7 @@ if st.button("Temukan Tempat Rekomendasi"):
         for i, score in sim_scores[1:]:
             if df.loc[i, 'kabupaten_kota'] == kabupaten_input:
                 rekomendasi.append((df.loc[i], score))
-            if len(rekomendasi) >= 5:
+            if len(rekomendasi) >= 10:
                 break
 
         if not rekomendasi:
