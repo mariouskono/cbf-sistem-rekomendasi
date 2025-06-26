@@ -1,70 +1,68 @@
-# app.py
-
 import streamlit as st
 import pandas as pd
-import joblib
+from streamlit_card import card
 
-# Load data dan model
-df = joblib.load('data_wisata_cleaned.pkl')
-cosine_sim = joblib.load('cosine_similarity_matrix.pkl')
-vectorizer = joblib.load('tfidf_vectorizer.pkl')
+# --- Load Dataset ---
+df = pd.read_csv("dataset_tempat_wisata_bali.csv")
 
-# Fungsi pembersih teks
-import re
-import string
-def clean_text(text):
-    if pd.isna(text):
-        return ""
-    text = text.lower()
-    text = re.sub(f"[{re.escape(string.punctuation)}]", " ", text)
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
+# Format kolom rating
+df['rating'] = df['rating'].astype(str).str.replace(',', '.').astype(float)
 
-# Judul Aplikasi
-st.title("🎯 Rekomendasi Tempat Wisata di Bali")
-st.markdown("Cari tempat wisata berdasarkan tempat yang Anda sukai di Bali.")
+# Hapus baris yang tidak memiliki rating
+df = df.dropna(subset=['rating'])
 
-# Input: Pilih nama tempat wisata
-pilihan_tempat = st.selectbox("Kamu sedang berada dimana / mau kemana?", sorted(df['nama'].unique()))
+# --- Sidebar: Input User ---
+st.sidebar.title("Temukan Tempat Wisata")
 
-# Tombol Temukan
-if st.button("Temukan Tempat Rekomendasi"):
-    nama_input = clean_text(pilihan_tempat)
+# Pilih lokasi tempat awal
+selected_place = st.sidebar.selectbox("Kamu sedang berada di / ingin ke mana?", df['nama'].unique())
 
-    if nama_input not in df['nama'].values:
-        st.error(f"Tempat '{pilihan_tempat}' tidak ditemukan dalam data.")
-    else:
-        idx_input = df[df['nama'] == nama_input].index[0]
-        kabupaten_input = df.loc[idx_input, 'kabupaten_kota']
+# Tombol pencarian
+if st.sidebar.button("Temukan Rekomendasi"):
+    # Ambil kabupaten dari tempat yang dipilih
+    selected_row = df[df['nama'] == selected_place].iloc[0]
+    kabupaten_terpilih = selected_row['kabupaten_kota']
 
-        # Hitung skor similarity
-        sim_scores = list(enumerate(cosine_sim[idx_input]))
-        sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
+    # Filter tempat wisata lain yang berada di kabupaten yang sama
+    rekomendasi = df[
+        (df['kabupaten_kota'] == kabupaten_terpilih) &
+        (df['nama'] != selected_place)
+    ].sort_values(by='rating', ascending=False)
 
-        # Ambil tempat dari kabupaten sama (kecuali diri sendiri)
-        rekomendasi = []
-        for i, score in sim_scores[1:]:
-            if df.loc[i, 'kabupaten_kota'] == kabupaten_input:
-                rekomendasi.append((df.loc[i], score))
-            if len(rekomendasi) >= 10:
-                break
+    st.title("Rekomendasi Tempat Wisata")
+    st.write(f"Karena kamu memilih **{selected_place}**, berikut rekomendasi di **{kabupaten_terpilih}**:")
 
-        if not rekomendasi:
-            st.warning("Tidak ada tempat wisata yang mirip ditemukan di kabupaten yang sama.")
-        else:
-            st.subheader("🧭 Rekomendasi Tempat Wisata Lain:")
-            for tempat, skor in rekomendasi:
-                with st.container():
-                    if pd.notna(tempat['link_gambar']):
-                        st.image(tempat['link_gambar'], caption=tempat['nama'], use_container_width=True)
+    # --- Layout 3 kolom per baris ---
+    col_count = 3
+    cols = st.columns(col_count)
+    for idx, (_, row) in enumerate(rekomendasi.iterrows()):
+        with cols[idx % col_count]:
+            # Render card
+            clicked = card(
+                title=row['nama'],
+                text=row['kabupaten_kota'],
+                image=row['link_gambar'] if pd.notna(row['link_gambar']) else None,
+                url=row['link_lokasi'] if pd.notna(row['link_lokasi']) else None,
+                styles={
+                    "card": {
+                        "height": "350px",
+                        "border-radius": "15px",
+                        "box-shadow": "0 4px 8px rgba(0, 0, 0, 0.2)",
+                        "padding": "10px"
+                    },
+                    "title": {
+                        "font-size": "18px",
+                        "font-weight": "bold",
+                        "color": "#333"
+                    },
+                    "text": {
+                        "font-size": "14px",
+                        "color": "#555"
+                    }
+                },
+                text_bottom=f"⭐ {row['rating']}"
+            )
 
-                    st.markdown(f"**{tempat['nama'].title()}**")
-                    st.markdown(f"- Kategori: {tempat['kategori'].title()}")
-                    st.markdown(f"- Preferensi: {tempat['preferensi'].title()}")
-                    st.markdown(f"- Kabupaten/Kota: {tempat['kabupaten_kota'].title()}")
-                    st.markdown(f"- Rating: {tempat['rating']}")
-                    
-                    if pd.notna(tempat['link_lokasi']):
-                        st.link_button("📍 Lihat di Google Maps", tempat['link_lokasi'])
-
-                    st.markdown("---")
+else:
+    st.title("Sistem Rekomendasi Tempat Wisata di Bali")
+    st.write("Silakan pilih tempat yang kamu tuju dari sidebar untuk mendapatkan rekomendasi lainnya di sekitarnya.")
